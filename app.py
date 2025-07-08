@@ -18,7 +18,7 @@ current_song = {
 connected_users = set()
 active_listeners = set()
 song_queue = []
-MAX_QUEUE_LENGTH = 10
+MAX_QUEUE_LENGTH = 25
 original_filenames = {}
 
 def match_target_amplitude(sound, target_dBFS):
