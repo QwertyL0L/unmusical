@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Unmusical</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<style>
+    a {
+        display: inline-block;
+        margin: 10px;
+        padding: 10px 20px;
+        text-decoration: none;
+        background-color: lightskyblue;
+        color: white;
+        border-radius: 25px;
+        text-align: center;
+        user-select: none;
+        cursor: pointer;
+    }
+
+    h1, p {
+        font-family: Arial, sans-serif;
+        color: #ffffff;
+        background-color: #3399cc;
+    }
+
+    body {
+        background-color: #3399cc;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    #progressContainer {
+        width: 80%;
+        height: 10px;
+        background: #ccc;
+        margin: 10px 0;
+        border-radius: 5px;
+        overflow: hidden;
+    }
+
+    #progressBar {
+        height: 100%;
+        background: limegreen;
+        width: 0;
+    }
+
+    ul.queue {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0;
+        color: white;
+    }
+</style>
+
+<body>
+    <p id="announcement"></p>
+    <h1>Shared Music Player</h1>
+    <p id="userCount">Users Online: 0</p>
+    <p id="heardCount" hidden>0 users listening</p>
+    <p id="nowPlaying">Now Playing: None</p>
+    <p id="duration">00:00 / 00:00</p>
+    <div id="progressContainer"><div id="progressBar"></div></div>
+
+    <audio id="player" hidden autoplay></audio>
+
+    <div>
+        <a onclick="playSong()">Play</a>
+        <a onclick="pauseSong()">Pause</a>
+        <a onclick="resumeSong()" style="display:none;">Resume</a>
+        <a onclick="toggleMute()" id="muteBtn">Mute</a>
+        <a href="/upload">Upload</a>
+    </div>
+
+    <h3 style="color:white;">Up Next</h3>
+    <ul id="queueList" class="queue"></ul>
+
+    <script>
+        const socket = io();
+        const player = document.getElementById("player");
+        const progressBar = document.getElementById("progressBar");
+        const durationText = document.getElementById("duration");
+        const muteBtn = document.getElementById("muteBtn");
+
+        socket.on("refresh_clients", fixAudio);
+
+        socket.on("sync", ({ title, start_time, duration, display_title }) => {
+            const nowPlaying = display_title || title;
+            document.getElementById("nowPlaying").textContent = "Now Playing: " + nowPlaying;
+
+            player.src = `/static/${title}`;
+            player.onloadedmetadata = () => {
+                const durationSec = duration || player.duration;
+                if (start_time) {
+                    const offset = (Date.now() / 1000) - start_time;
+                    player.currentTime = Math.min(Math.max(offset, 0), durationSec);
+                    player.play();
+                } else {
+                    player.pause();
+                    player.currentTime = 0;
+                }
+            };
+        });
+
+        player.onended = () => {
+            socket.emit("song_ended");
+        };
+
+
+        socket.on("pause", () => {
+            player.pause();
+            toggleButtonStates(false);
+        });
+
+        socket.on("resume", () => {
+            player.play();
+            toggleButtonStates(true);
+        });
+
+        socket.on("announcement", msg => {
+            document.getElementById("announcement").textContent = msg;
+        });
+
+        socket.on("user_count", count => {
+            document.getElementById("userCount").textContent = "Users Online: " + count;
+        });
+
+        socket.on("heard_count", count => {
+            document.getElementById("heardCount").textContent = `${count} users listening`;
+        });
+
+        socket.on("queue_update", titles => {
+            const list = document.getElementById("queueList");
+            list.innerHTML = "";
+            titles.forEach(title => {
+                const li = document.createElement("li");
+                li.textContent = title.split(".")[0];
+                list.appendChild(li);
+            });
+        });
+
+        function playSong() {
+            socket.emit("play_next");
+        }
+
+        function pauseSong() {
+            socket.emit("pause_song");
+        }
+
+        function resumeSong() {
+            socket.emit("resume_song");
+        }
+
+        function toggleButtonStates(isPlaying) {
+            document.querySelector("a[onclick='pauseSong()']").style.display = isPlaying ? "inline-block" : "none";
+            document.querySelector("a[onclick='resumeSong()']").style.display = isPlaying ? "none" : "inline-block";
+        }
+
+        function toggleMute() {
+            player.muted = !player.muted;
+            muteBtn.textContent = player.muted ? "Unmute" : "Mute";
+        }
+
+        function fixAudio() {
+            socket.emit("pause_song");
+            player.src = player.src;
+            socket.emit("resume_song");
+        }
+
+        function checkIfHeard() {
+            if (player.paused || player.readyState < 3) {
+                socket.emit("heard_check", { heard: false });
+                return;
+            }
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            const sum = dataArray.reduce((a, b) => a + b, 0);
+            const isHeard = sum > 0;
+            socket.emit("heard_check", { heard: isHeard });
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        setInterval(() => {
+            if (!player.duration || isNaN(player.duration)) return;
+            const current = player.currentTime;
+            const total = player.duration;
+            durationText.textContent = `${formatTime(current)} / ${formatTime(total)}`;
+            progressBar.style.width = `${(current / total) * 100}%`;
+            checkIfHeard();
+        }, 1000);
+
+        let source;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+
+        function connectAudioGraph() {
+            try {
+                if (source) source.disconnect();
+                source = audioCtx.createMediaElementSource(player);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+            } catch (e) {
+                console.warn("Audio graph error:", e.message);
+            }
+        }
+    </script>
+</body>
+</html>

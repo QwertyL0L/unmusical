@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: unmusical
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app:app --worker-class eventlet -w 1

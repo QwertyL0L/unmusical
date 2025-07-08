@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Music</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        button {
+            display: inline-block;
+            margin: 10px;
+            padding: 10px 20px;
+            background-color: lightskyblue;
+            color: white;
+            border-radius: 25px;
+            text-align: center;
+            opacity: 0;
+            animation: fadeIn 2s forwards;
+            animation-delay: 1.5s;
+            user-select: none;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+        }
+
+        h1, p, body {
+            font-family: Arial, sans-serif;
+            background-color: #3399cc;
+            color: white;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        #dropZone {
+            border: 2px dashed white;
+            padding: 30px;
+            border-radius: 20px;
+            margin: 20px;
+            text-align: center;
+            width: 60%;
+            transition: background 0.3s;
+        }
+
+        #dropZone.dragover {
+            background-color: rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload Music</h1>
+    <p id="fileName">No file chosen</p>
+
+    <form id="uploadForm" action="/upload_success" method="post" enctype="multipart/form-data">
+        <input type="file" id="fileInput" name="file[]" multiple required>
+        <button type="button" onclick="document.getElementById('fileInput').click()">Choose File</button>
+        <button type="submit">Upload</button>
+    </form>
+
+    <div id="dropZone">Drag & drop or paste audio files here</div>
+
+    <script>
+        const fileInput = document.getElementById("fileInput");
+        const fileNameDisplay = document.getElementById("fileName");
+        const dropZone = document.getElementById("dropZone");
+
+        // Maintain a list of all selected files
+        let allFiles = [];
+
+        function updateFileInput() {
+            const dt = new DataTransfer();
+            for (const file of allFiles) {
+                dt.items.add(file);
+            }
+            fileInput.files = dt.files;
+            const names = allFiles.map(f => f.name).join(', ');
+            fileNameDisplay.textContent = 'Chosen File(s): ' + (names || 'No file chosen');
+        }
+
+        fileInput.addEventListener('change', () => {
+            allFiles = [...allFiles, ...fileInput.files];
+            updateFileInput();
+        });
+
+        dropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZone.classList.add("dragover");
+        });
+
+        dropZone.addEventListener("dragleave", () => {
+            dropZone.classList.remove("dragover");
+        });
+
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropZone.classList.remove("dragover");
+
+            allFiles = [...allFiles, ...e.dataTransfer.files];
+            updateFileInput();
+        });
+
+        document.addEventListener("paste", (e) => {
+            if (e.clipboardData.files.length > 0) {
+                allFiles = [...allFiles, ...e.clipboardData.files];
+                updateFileInput();
+            }
+        });
+    </script>
+
+</body>
+</html>
